@@ -11,7 +11,7 @@
 using namespace std;
 
 int xmin{}; int xmax=40; int ymin {}; int ymax= 40;
-float L=2;
+float L=2, l=0.5, w=1;
 
 struct state{
     float x;
@@ -43,7 +43,7 @@ struct state{
     }
     
     void displaystate(){
-     cout<<"\nStates are:\nXpos: "<<x<<"\tYpos: "<<y<<"\tTheta0: "<<theta0<<"\tVelocity: "<<v<<"\tSteer angle: "<<phi<<"\nTheta1: "<<theta1<<"\tTheta2: "<<theta2<<"\tTheta3: "<<theta3<<endl;
+     cout<<"\nStates are:\nXpos: "<<x<<"\tYpos: "<<y<<"\tTheta0: "<<theta0<<"\tVelocity: "<<v<<"\tSteer angle: "<<phi<<"\tTheta1: "<<theta1<<"\tTheta2: "<<theta2<<"\tTheta3: "<<theta3<<endl;
     }
     
     int check_state(){
@@ -66,6 +66,10 @@ struct state{
        phi = rand() % ((5266+1+5266)*1) - 5266*1; phi/=10000;
     }
     
+    float euclid_dist_to_goal(){
+        return ( sqrt( (x-3)*(x-3) + (y-36)*(y-36) ) );
+    }
+    
 };
 
 struct addstate : state {
@@ -85,12 +89,18 @@ state start_state(11,2,0,0,0,0,0,0);
 int g=1;
 
 //function definitions
-state getnearstate(const state &s);
+addstate getnearstate(const state &s);
 float dist_states(const state &a, const state&s);
 vector <vector <float>> generate_input (const state &near_state);
 vector <vector <float>> generate_input (const state &near_state);
 state find_new_state(const vector <vector <float>> &urand, const state &near_state, const state &rand_state);
 state runge_kutta( const state &near_state, const vector <float> &urandom);
+int ifisstatevalid(const state &s);
+int check_state_collision(const state &s);
+int getvehiclecollision(const float &x, const float &y, const float &theta);
+float theta_vector(float p1x, float p1y, float p2x, float p2y);
+int ifispointobstacle(const float &px,const float &py,const vector< vector <vector <float>>> &poly_vector);
+addstate copystates( addstate a, const state &b);
 
 int main()
 {
@@ -117,20 +127,26 @@ int main()
     
     //cout<<"\nCheck state function  1 2 3 :\t"<<start_state.check_state();
     
-    while( (newstate.check_state() == 0) && (count<=1) ){
+    while( (newstate.check_state() == 0) && (count<=20000) ){
         
         rand_state.randomize_state();
-        cout<<"\nDisplaying random states\n";
-        rand_state.displaystate();
+        //cout<<"\nDisplaying random states\n";
+        //rand_state.displaystate();
         
-        state near_state = getnearstate(rand_state);
-        cout<<"\nDisplaying near states\n";
-        near_state.displaystate();
+        addstate near = getnearstate(rand_state);
+        state near_state = near;
+//        cout<<"\nDisplaying near states\n";
+//        near_state.displaystate();
         
         //set u rand
         vector < vector <float> > urand = generate_input( near_state );
         state newstate = find_new_state(urand,near_state,rand_state);
         
+        if ( ifisstatevalid(newstate) == 1 ){
+            addstate temp_state ( (point_number+2) , near.previous_state);
+            temp_state = copystates( temp_state, newstate);
+            graph.push_back(temp_state);
+        }
         
 //        state b (12, 38 , 0, 0, 0, 0, 0, 0);
 //        addstate c (178,341);
@@ -138,8 +154,12 @@ int main()
 //        b=c;
 //        b.displaystate();
 //        cout<<endl<<endl;
-        
+        point_number++;
         count++;
+        if(newstate.check_state() == 1){cout<<"\n\n*****GOAL REACHED****\n\n";}
+//        cout<<"\nDisplaying new states\n";
+//        newstate.displaystate();
+        cout<<"\nDistane to goal is:"<< newstate.euclid_dist_to_goal() <<"\tXpos: "<<newstate.x<<"\tYpos: "<<newstate.y<<endl;
     }
     
     
@@ -160,9 +180,9 @@ float dist_states(const state &a, const state&s){
     return ( dist );
 }
 
-state getnearstate(const state &s){
+addstate getnearstate(const state &s){
     float least_distance=INT_MAX;
-    state nearest_state;
+    addstate nearest_state(0,0);
     for(int i=0; i<graph.size(); ++i){
        float dist = dist_states( graph.at(i) ,s );
     
@@ -178,7 +198,7 @@ vector <vector <float>> generate_input (const state &near_state){
     vector < vector <float> > us{};
     for(int i=0; i<20; i++){
      vector <float> u{0,0};
-     u.at(0) = rand() % (( (g/6) + 1 - (1/6) )*100 ) - (1/6)*100; u.at(0)/=100;
+     u.at(0) = rand() % (( int(g*10000/6.0) + 1 + 1667 ) ) - 1667; u.at(0)/=10000;
      u.at(1) = rand() % ((5266+1+5266)*1) - 5266*1; u.at(1)/=10000;
      us.push_back(u);
     }
@@ -196,7 +216,7 @@ state find_new_state(const vector <vector <float>> &urand, const state &near_sta
         new_state = this_state;
      }
     }
-    
+    new_state.displaystate();
     return new_state;
 }
 
@@ -208,13 +228,152 @@ state runge_kutta( const state &near_state, const vector <float> &urandom){
     //w1 = urandom.at(0);
     //w2 =
     this_state.v = near_state.v + delt * urandom.at(0);
+    //cout<<this_state.v<<endl;
     this_state.phi = near_state.phi + delt * urandom.at(1);
     
-    this_state.theta0 = near_state.theta0 + delt * (near_state.v/L) * tan(near_state.phi);
-    this_state.x = near_state.x + delt * near_state.v * cos(near_state.theta0) ;
-    this_state.y = near_state.y + delt * near_state.v * sin(near_state.theta0) ;
-    this_state.theta1 = near_state.theta1 + delt * (near_state.v/L) * sin(near_state.theta0 - near_state.theta1);
-    this_state.theta2 = near_state.theta2 + delt * (near_state.v/L) * cos(near_state.theta0 - near_state.theta1) * sin(near_state.theta0 - near_state.theta1);
-    this_state.theta3 = near_state.theta3 + delt * (near_state.v/L) * cos(near_state.theta1 - near_state.theta2) * cos(near_state.theta0 - near_state.theta1) * sin(near_state.theta0 - near_state.theta1);
+    this_state.theta0 = near_state.theta0 + delt * (this_state.v/L) * tan(this_state.phi);
+    this_state.x = near_state.x + delt * this_state.v * cos(this_state.theta0) ;
+    this_state.y = near_state.y + delt * this_state.v * sin(this_state.theta0) ;
+    this_state.theta1 = near_state.theta1 + delt * (this_state.v/(L+l)) * sin(this_state.theta0 - near_state.theta1);
+    this_state.theta2 = near_state.theta2 + delt * (this_state.v/(L+l)) * cos(this_state.theta0 - this_state.theta1) * sin(this_state.theta0 - this_state.theta1);
+    this_state.theta3 = near_state.theta3 + delt * (this_state.v/(L+l)) * cos(this_state.theta1 - this_state.theta2) * cos(this_state.theta0 - this_state.theta1) * sin(this_state.theta0 - this_state.theta1);
+    
+    //this_state.displaystate();
+    return this_state;
 }
 
+int ifisstatevalid(const state &s){
+    if( (s.v>=-0.1667)&&(s.v<=0.5) && (s.phi>=-0.5233)&&(s.phi<=0.5233) ){
+        if( (s.x>=xmin)&&(s.x<=xmax) && (s.y>=ymin)&&(s.y<=ymax) && (s.theta0>=0)&&(s.theta0<=6.28) ){
+            if( check_state_collision(s) == 0 ){
+                return 1;
+            }
+            else return 0;
+        }
+        else return 0;
+    }
+    else return 0;
+}
+
+int check_state_collision(const state &s){
+    //tractors and all trailers
+    int count ={};  //has to be 0 for no collisions   ( 1 if collision takes place )
+    count += getvehiclecollision(s.x, s.y, s.theta0);      //tractor
+    if( count == 0 ){
+        count += getvehiclecollision( (s.x - (L+l)*cos(s.theta1) ) , (s.y - (L+l)*sin(s.theta1) ) , s.theta1);    //trailer1
+        if( count == 0 ){
+            count += getvehiclecollision( (s.x - (L+l)*cos(s.theta1) - (L+l)*cos(s.theta2) ) , (s.y - (L+l)*sin(s.theta1) -  (L+l)*sin(s.theta2) ) , s.theta2);//trailer2
+            if( count == 0 ){
+             count += getvehiclecollision( (s.x - (L+l)*cos(s.theta1) - (L+l)*cos(s.theta2) - (L+l)*cos(s.theta3) ) , (s.y - (L+l)*sin(s.theta1) -  (L+l)*sin(s.theta2) -(L+l)*sin(s.theta3) ) , s.theta3);//trailer 3
+             if( count == 0 ){return 0;}
+            }
+            else
+                return 1;
+        }
+        else
+            return 1;
+    }
+    else
+        return 1;
+    
+}
+
+int getvehiclecollision(const float &x, const float &y, const float &theta){
+    //for tractor
+    float x1 = x + (w/2)*sin(theta);
+    float y1 = y - (w/2)*cos(theta);
+    
+    float x2 = x + (w/2)*sin(theta) + L*cos(theta);
+    float y2 = y - (w/2)*cos(theta) + L*sin(theta);
+    
+    float x3 = x - (w/2)*sin(theta) + L*cos(theta);
+    float y3 = y + (w/2)*cos(theta) + L*sin(theta);
+    
+    float x4 = x - (w/2)*sin(theta);
+    float y4 = y + (w/2)*cos(theta);
+    
+    int count{};
+    vector< vector< vector<float>>> vehicle_poly { {{x1,y1},{x2,y2},{x3,y3},{x4,y4}} };
+    for(int i=0; i<vehicle_poly.size();i++){
+        for(int j=0; j<vehicle_poly.at(i).size();j++){
+            if( ifispointobstacle( vehicle_poly.at(i).at(j).at(0), vehicle_poly.at(i).at(j).at(1), obstacle_vector ) == 1)
+                count++;
+        }
+    }
+    if (count!=0){     //if vehicle points are inside obstalce
+        return 1;
+    }
+    
+    else{
+      for(int i=0; i<obstacle_vector.size();i++){
+        for(int j=0; j<obstacle_vector.at(i).size();j++){
+            if( ifispointobstacle( obstacle_vector.at(i).at(j).at(0), obstacle_vector.at(i).at(j).at(1), vehicle_poly ) == 1) //point inside polygon
+                count++;
+        }
+      }
+      if (count!=0){       //if obstacle points not inside vehicle
+        return 1;
+      }
+      
+      else
+          return 0;        //points not inside obstalce ( no collision )
+    }
+}
+
+float theta_vector(float p1x, float p1y, float p2x, float p2y){
+    if(((p2y-p1y)>=0)&&((p2x-p1x)>=0))             //1st quadrant
+        return (atan((p2y-p1y)/(p2x-p1x)));
+    else if(((p2y-p1y)>=0)&&((p2x-p1x)<0))
+        return (3.14159+atan((p2y-p1y)/(p2x-p1x)));
+    else if(((p2y-p1y)<0)&&((p2x-p1x)<0))
+        return (3.14159+atan((p2y-p1y)/(p2x-p1x)));
+    else if(((p2y-p1y)<0)&&((p2x-p1x)>=0))
+        return ((2*3.14159)+atan((p2y-p1y)/(p2x-p1x)));
+    else
+        return (0);
+}
+
+int ifispointobstacle(const float &px,const float &py,const vector< vector <vector <float>>> &poly_vector){
+    int count=0;
+    int inside_obstalce=0;
+    float total_theta {};
+    for(int i=0; i<poly_vector.size(); i++){total_theta=0;count=0;
+        for(int j=0; j<poly_vector.at(i).size(); j++){
+          int m=j+1;
+          float theta1 {}, theta2 {};
+          if((j+1)==poly_vector.at(i).size())
+              m=0;
+          theta2=theta_vector(px,py,poly_vector.at(i).at(m).at(0),poly_vector.at(i).at(m).at(1));
+          theta1=theta_vector(px,py,poly_vector.at(i).at(j).at(0),poly_vector.at(i).at(j).at(1));
+          if(theta1<=theta2)
+             total_theta=(theta2-theta1);
+          else
+             total_theta=(theta2+3.14159*2-theta1);
+             
+          if(total_theta>3.14159)
+            count++;      //count increases if point is outside the polygon
+        }
+
+                                                      
+    if(count==0) {         //is count is 0, then it is not inside the polygon
+    inside_obstalce++;}
+             
+    }
+    
+    if(inside_obstalce!=0)
+        return (1);
+    else
+        return (0);
+}
+
+addstate copystates( addstate a, const state &b){
+    a.x=b.x;
+    a.y=b.y;
+    a.theta0=b.theta0;
+    a.v=b.v;
+    a.phi=b.phi;
+    a.theta1=b.theta1;
+    a.theta2=b.theta2;
+    a.theta3=b.theta3;
+    return a;
+}
