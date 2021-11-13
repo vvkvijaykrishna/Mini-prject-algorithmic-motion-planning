@@ -76,7 +76,7 @@ struct state{
     }
     
     float euclid_dist_to_goal(){
-        return ( sqrt( (x-3)*(x-3) + (y-36)*(y-36) ) );
+        return ( sqrt( (x-3)*(x-3) + (y-37)*(y-37) ) );
     }
     
     float euclid_dist_to_initial(){
